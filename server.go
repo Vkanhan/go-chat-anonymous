@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"strings"
+	"sync"
+
+	"github.com/fatih/color"
 )
 
 var (
@@ -10,6 +13,10 @@ var (
 	clientChan  = make(chan *Client)         // Channel for new client connections
 	leaveChan   = make(chan *Client)         // Channel for client disconnections
 	messageChan = make(chan string)          // Channel for incoming messages
+	clientMutex sync.Mutex                   //Mutex to protect access to the clients map
+
+	systemMessage = color.New(color.FgYellow, color.Bold).SprintFunc()
+	userMessage   = color.New(color.FgCyan).SprintFunc()
 )
 
 // handleMessages manages incoming clients, disconnecting clients, and messages
@@ -26,52 +33,45 @@ func handleMessages() {
 	}
 }
 
-// handleNewClient handles a newly connected client.
 func handleNewClient(client *Client) {
 	fmt.Printf("New client connected: %s\n", client.name)
 	addClientToChatRoom(client)
 	broadcastToChat(fmt.Sprintf("%s has joined", client.name), client.passkey)
 }
 
-// handleNewClient processes a newly connected client.
 func handleClientLeave(client *Client) {
-	if removeClientFromChatRoom(client) {
-		broadcastToChat(fmt.Sprintf("%s has left", client.name), client.passkey)
-	}
+	removeClientFromChatRoom(client)
 }
 
-// handleMessage handles an incoming message from a client.
 func handleMessage(message string) {
-	// Split the message into passkey and content
-	// The message string is expected to be in the format "passkey|name: message"
-	// Splitting the string with a limit of 2 ensures that only the first occurrence of '|' is used for splitting
+	// Split the message string in the format "passkey|name: message"
+	//Only the first occurrence of '|' is used for splitting
 	parts := strings.SplitN(message, "|", 2)
 	if len(parts) < 2 {
 		return
 	}
 	// Extract passkey and content from the parts array store
-	passkey := parts[0]	  // parts[0] contains the passkey, which identifies the chat room
-	content := parts[1]	 // parts[1] contains the the message to be broadcasted
+	passkey := parts[0] //passkey, which identifies the chat room
+	content := parts[1] //message to be broadcasted
 	broadcastMessage(passkey, content)
 }
 
-// addClientToChatRoom adds a client to the specified chat room.
 func addClientToChatRoom(client *Client) {
-	// Check if the chat room (identified by client.passkey) already exists
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+
 	if _, ok := clients[client.passkey]; !ok {
-		// If the chat room does not exist create a new slice and add the client
 		clients[client.passkey] = []*Client{client}
 	} else {
-		// If the chat room already exists, append the client to the existing slice
 		clients[client.passkey] = append(clients[client.passkey], client)
 	}
 }
 
-// removeClientFromChatRoom removes a client from the specified chat room.
 func removeClientFromChatRoom(client *Client) bool {
-	// Check if there are clients associated with the client's passkey
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+
 	if clientList, ok := clients[client.passkey]; ok {
-		// Remove the client from the chat room
 		for i, c := range clientList {
 			// Find the client that is leaving
 			if c == client {
@@ -84,18 +84,19 @@ func removeClientFromChatRoom(client *Client) bool {
 	return false
 }
 
-// broadcastMessage sends a message to all clients in the specified chat room
 func broadcastMessage(passkey, message string) {
+	clientMutex.Lock()
+	defer clientMutex.Unlock()
+
 	if clientList, ok := clients[passkey]; ok {
 		// Send message to each client in the chat room
 		for _, client := range clientList {
-			fmt.Fprintf(client.conn, "%s\n", message)
+			fmt.Fprintf(client.conn, "%s\n", userMessage(message)) // Cyan for user messages
 		}
 	}
 }
 
-// broadcastToChat is a helper function to broadcast a message to a specific chat room
 func broadcastToChat(message, passkey string) {
-	broadcastMessage(passkey, message)
+	formattedMessage := systemMessage(fmt.Sprintf("---- %s ----", message)) // Yellow for system messages
+	broadcastMessage(passkey, formattedMessage)
 }
-

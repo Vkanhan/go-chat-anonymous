@@ -5,19 +5,18 @@ import (
 	"net"
 )
 
+const port = "8080"
+
 func main() {
-	// Start the server and listen on port 8080
-	listener, err := net.Listen("tcp", ":8080")
+	listener, err := net.Listen("tcp", ":"+port)
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 		return
 	}
 	defer listener.Close()
 
-	// Goroutine to handle messages
 	go handleMessages()
 
-	// Accept incoming connections
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
