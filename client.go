@@ -8,46 +8,46 @@ import (
 )
 
 // Client represents a connected user
-type Client struct {
-	conn    net.Conn
-	name    string
-	passkey string
+type ChatClient struct {
+	connection net.Conn
+	name       string
+	passkey    string
 }
 
 // handleConnection manages a single client's connection
-func handleConnection(conn net.Conn) {
-	defer conn.Close()
+func handleClientConnection(connection net.Conn) {
+	defer connection.Close()
 
-	client := createClient(conn)
-	if client == nil {
+	chatClient := createClient(connection)
+	if chatClient == nil {
 		return
 	}
 
-	clientJoined(client)
-	sendWelcomeMessage(client)
-	handleClientMessages(client)
-	clientLeft(client)
+	notifyClientJoined(chatClient)
+	sendWelcomeMessage(chatClient)
+	handleClientMessages(chatClient)
+	notifyClientLeft(chatClient)
 }
 
-func createClient(conn net.Conn) *Client {
-	client := &Client{conn: conn}
+func createClient(connection net.Conn) *ChatClient {
+	chatClient := &ChatClient{connection: connection}
 
-	client.name = readInput(conn, "Enter your anonymous name: ")
-	if client.name == "" {
+	chatClient.name = readInput(connection, "Enter your anonymous name: ")
+	if chatClient.name == "" {
 		return nil
 	}
 
-	client.passkey = readInput(conn, "Enter your secret passkey to join a chat room: ")
-	if client.passkey == "" {
+	chatClient.passkey = readInput(connection, "Enter your secret passkey to join a chat room: ")
+	if chatClient.passkey == "" {
 		return nil
 	}
 
-	return client
+	return chatClient
 }
 
-func readInput(conn net.Conn, prompt string) string {
-	fmt.Fprint(conn, prompt)
-	input, err := bufio.NewReader(conn).ReadString('\n')
+func readInput(connection net.Conn, prompt string) string {
+	fmt.Fprint(connection, prompt)
+	input, err := bufio.NewReader(connection).ReadString('\n')
 	if err != nil {
 		fmt.Println("Error reading input:", err)
 		return ""
@@ -55,16 +55,16 @@ func readInput(conn net.Conn, prompt string) string {
 	return strings.TrimSpace(input)
 }
 
-func clientJoined(client *Client) {
-	clientChan <- client
+func notifyClientJoined(client *ChatClient) {
+	clientChannel <- client
 }
 
-func sendWelcomeMessage(client *Client) {
-	fmt.Fprintf(client.conn, "Welcome to the chat room, %s!\n", client.name)
+func sendWelcomeMessage(client *ChatClient) {
+	fmt.Fprintf(client.connection, "Welcome to the chat room, %s!\n", client.name)
 }
 
-func handleClientMessages(client *Client) {
-	input := bufio.NewScanner(client.conn)
+func handleClientMessages(client *ChatClient) {
+	input := bufio.NewScanner(client.connection)
 	for input.Scan() {
 		message := input.Text()
 		if message == "leave" {
@@ -76,14 +76,15 @@ func handleClientMessages(client *Client) {
 	}
 }
 
-func sendMessageToChannel(client *Client, message string) {
-	messageChan <- fmt.Sprintf("%s|%s: %s", client.passkey, client.name, message)
+func sendMessageToChannel(chatClient *ChatClient, message string) {
+	messageChannel <- fmt.Sprintf("%s|%s: %s", chatClient.passkey, chatClient.name, message)
 }
 
-func clientLeft(client *Client) {
-	leaveMessage := fmt.Sprintf("%s has left the chat", client.name)
-	broadcastToChat(leaveMessage, client.passkey)
+func notifyClientLeft(chatClient *ChatClient) {
+
+	leaveMessage := fmt.Sprintf("%s has left the chat", chatClient.name)
+	broadcastToChatRoom(leaveMessage, chatClient.passkey)
 
 	// Remove the client from the chatroom
-	leaveChan <- client
+	leaveChannel <- chatClient
 }

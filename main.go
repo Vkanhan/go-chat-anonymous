@@ -1,28 +1,28 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net"
 )
 
-const port = "8080"
+const serverPort = "8080"
 
 func main() {
-	listener, err := net.Listen("tcp", ":"+port)
+	listener, err := net.Listen("tcp", ":"+serverPort)
 	if err != nil {
-		fmt.Println("Error starting server:", err)
-		return
+		log.Fatalf("Error starting the server: %v", err)
 	}
 	defer listener.Close()
 
-	go handleMessages()
+	go handleMessageProcessing()
 
+	log.Println("Serve started, waiting for the clients to join..")
 	for {
-		conn, err := listener.Accept()
+		clientConnection, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			log.Printf("Error accepting connection: %v", err)
 			continue
 		}
-		go handleConnection(conn)
+		go handleClientConnection(clientConnection)
 	}
 }

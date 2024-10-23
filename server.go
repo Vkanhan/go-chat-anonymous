@@ -9,74 +9,74 @@ import (
 )
 
 var (
-	clients     = make(map[string][]*Client) // Map of chat rooms and their clients
-	clientChan  = make(chan *Client)         // Channel for new client connections
-	leaveChan   = make(chan *Client)         // Channel for client disconnections
-	messageChan = make(chan string)          // Channel for incoming messages
-	clientMutex sync.Mutex                   //Mutex to protect access to the clients map
+	activeClients  = make(map[string][]*ChatClient) // Map of chat rooms and their clients
+	clientChannel  = make(chan *ChatClient)         // Channel for new client connections
+	leaveChannel   = make(chan *ChatClient)         // Channel for client disconnections
+	messageChannel = make(chan string)              // Channel for incoming messages
+	clientMutex    sync.Mutex                       //Mutex to protect access to the clients map
 
-	systemMessage = color.New(color.FgYellow, color.Bold).SprintFunc()
-	userMessage   = color.New(color.FgCyan).SprintFunc()
+	systemMessageFormatter = color.New(color.FgYellow, color.Bold).SprintFunc()
+	userMessageFormatter   = color.New(color.FgCyan).SprintFunc()
 )
 
 // handleMessages manages incoming clients, disconnecting clients, and messages
-func handleMessages() {
+func handleMessageProcessing() {
 	for {
 		select {
-		case client := <-clientChan:
-			handleNewClient(client)
-		case client := <-leaveChan:
-			handleClientLeave(client)
-		case message := <-messageChan:
-			handleMessage(message)
+		case chatClient := <-clientChannel:
+			handleNewClient(chatClient)
+		case chatClient := <-leaveChannel:
+			handleClientLeave(chatClient)
+		case incomingMessage := <-messageChannel:
+			processIncomingMessage(incomingMessage)
 		}
 	}
 }
 
-func handleNewClient(client *Client) {
-	fmt.Printf("New client connected: %s\n", client.name)
-	addClientToChatRoom(client)
-	broadcastToChat(fmt.Sprintf("%s has joined", client.name), client.passkey)
+func handleNewClient(chatClient *ChatClient) {
+	fmt.Printf("New client connected: %s\n", chatClient.name)
+	addClientToChatRoom(chatClient)
+	broadcastToChatRoom(fmt.Sprintf("%s has joined", chatClient.name), chatClient.passkey)
 }
 
-func handleClientLeave(client *Client) {
+func handleClientLeave(client *ChatClient) {
 	removeClientFromChatRoom(client)
 }
 
-func handleMessage(message string) {
+func processIncomingMessage(incomingMessage string) {
 	// Split the message string in the format "passkey|name: message"
 	//Only the first occurrence of '|' is used for splitting
-	parts := strings.SplitN(message, "|", 2)
+	parts := strings.SplitN(incomingMessage, "|", 2)
 	if len(parts) < 2 {
 		return
 	}
 	// Extract passkey and content from the parts array store
-	passkey := parts[0] //passkey, which identifies the chat room
-	content := parts[1] //message to be broadcasted
-	broadcastMessage(passkey, content)
+	passkey := parts[0]        //passkey, which identifies the chat room
+	messageContent := parts[1] //message to be broadcasted
+	broadcastToChatRoom(passkey, messageContent)
 }
 
-func addClientToChatRoom(client *Client) {
+func addClientToChatRoom(chatClient *ChatClient) {
 	clientMutex.Lock()
 	defer clientMutex.Unlock()
 
-	if _, ok := clients[client.passkey]; !ok {
-		clients[client.passkey] = []*Client{client}
+	if _, ok := activeClients[chatClient.passkey]; !ok {
+		activeClients[chatClient.passkey] = []*ChatClient{chatClient}
 	} else {
-		clients[client.passkey] = append(clients[client.passkey], client)
+		activeClients[chatClient.passkey] = append(activeClients[chatClient.passkey], chatClient)
 	}
 }
 
-func removeClientFromChatRoom(client *Client) bool {
+func removeClientFromChatRoom(chatClient *ChatClient) bool {
 	clientMutex.Lock()
 	defer clientMutex.Unlock()
 
-	if clientList, ok := clients[client.passkey]; ok {
-		for i, c := range clientList {
+	if clientList, ok := activeClients[chatClient.passkey]; ok {
+		for i, client := range clientList {
 			// Find the client that is leaving
-			if c == client {
+			if client == chatClient {
 				// Remove the client from the chat room slice
-				clients[client.passkey] = append(clientList[:i], clientList[i+1:]...)
+				activeClients[client.passkey] = append(clientList[:i], clientList[i+1:]...)
 				return true
 			}
 		}
@@ -84,19 +84,19 @@ func removeClientFromChatRoom(client *Client) bool {
 	return false
 }
 
-func broadcastMessage(passkey, message string) {
+func broadcastMessageToClients(passkey, message string) {
 	clientMutex.Lock()
 	defer clientMutex.Unlock()
 
-	if clientList, ok := clients[passkey]; ok {
+	if clientList, ok := activeClients[passkey]; ok {
 		// Send message to each client in the chat room
 		for _, client := range clientList {
-			fmt.Fprintf(client.conn, "%s\n", userMessage(message)) // Cyan for user messages
+			fmt.Fprintf(client.connection, "%s\n", userMessageFormatter(message)) // Cyan for user messages
 		}
 	}
 }
 
-func broadcastToChat(message, passkey string) {
-	formattedMessage := systemMessage(fmt.Sprintf("---- %s ----", message)) // Yellow for system messages
-	broadcastMessage(passkey, formattedMessage)
+func broadcastToChatRoom(message, passkey string) {
+	formattedMessage := systemMessageFormatter(fmt.Sprintf("---- %s ----", message)) // Yellow for system messages
+	broadcastMessageToClients(passkey, formattedMessage)
 }
