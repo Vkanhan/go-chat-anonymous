@@ -11,7 +11,7 @@ func (manager *ChatRoomManager) addClientToChatRoom(client *ChatClient) {
 	}
 }
 
-func (manager *ChatRoomManager) removeClientFromChatRoom(client *ChatClient) {
+func (manager *ChatRoomManager) removeClientFromChatRoom(client *ChatClient) bool {
 	manager.clientMutex.Lock()
 	defer manager.clientMutex.Unlock()
 
@@ -21,8 +21,13 @@ func (manager *ChatRoomManager) removeClientFromChatRoom(client *ChatClient) {
 			if c == client {
 				// Remove the client from the chat room slice
 				manager.clients[client.passkey] = append(clientList[:i], clientList[i+1:]...)
-				break
+				// If the room is empty after removal, delete the room entry
+				if len(manager.clients[client.passkey]) == 0 {
+					delete(manager.clients, client.passkey)
+				}
+				return true 
 			}
 		}
 	}
+	return false 
 }
