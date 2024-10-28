@@ -5,16 +5,18 @@ import (
 	"net"
 )
 
-const serverPort = "8080"
+const Serverport = "8080"
 
 func main() {
-	listener, err := net.Listen("tcp", ":"+serverPort)
+	listener, err := net.Listen("tcp", ":"+Serverport)
 	if err != nil {
 		log.Fatalf("Error starting the server: %v", err)
 	}
 	defer listener.Close()
 
-	go handleMessageProcessing()
+	manager := NewChatRoomManager()
+
+	go manager.handleMessages()
 
 	log.Println("Serve started, waiting for the clients to join..")
 	for {
@@ -23,6 +25,6 @@ func main() {
 			log.Printf("Error accepting connection: %v", err)
 			continue
 		}
-		go handleClientConnection(clientConnection)
+		go manager.handleConnection(clientConnection)
 	}
 }
